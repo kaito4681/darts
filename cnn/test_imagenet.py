@@ -29,7 +29,6 @@ parser.add_argument('--auxiliary', action='store_true', default=False, help='use
 parser.add_argument('--drop_path_prob', type=float, default=0, help='drop path probability')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
 parser.add_argument('--arch', type=str, default='DARTS', help='which architecture to use')
-parser.add_argument('--disable_cudnn', action='store_true', default=False, help='disable cuDNN backend')
 args = parser.parse_args()
 
 log_format = '%(asctime)s %(message)s'
@@ -46,9 +45,9 @@ def main():
 
   np.random.seed(args.seed)
   torch.cuda.set_device(args.gpu)
-  cudnn.benchmark = not args.disable_cudnn
+  cudnn.benchmark = True
   torch.manual_seed(args.seed)
-  cudnn.enabled = not args.disable_cudnn
+  cudnn.enabled=True
   torch.cuda.manual_seed(args.seed)
   logging.info('gpu device = %d' % args.gpu)
   logging.info("args = %s", args)
