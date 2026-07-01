@@ -12,6 +12,8 @@
 uv sync
 ```
 
+Linux / Windows では `torch` と `torchvision` を PyTorch 公式の CUDA 12.8 wheel index からインストールします。
+
 エラーが出たら，
 
 ```bash
@@ -86,8 +88,8 @@ uv run cnn/test_imagenet.py --data data/imagenet --auxiliary --model_path imagen
 ### 可視化
 
 ```bash
-uv run --extra viz cnn/visualize.py DARTS
-uv run --extra viz rnn/visualize.py DARTS
+uv run cnn/visualize.py DARTS
+uv run rnn/visualize.py DARTS
 ```
 
 `DARTS` は `genotypes.py` に定義した任意のアーキテクチャ名に置き換えられます。
