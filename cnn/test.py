@@ -12,7 +12,6 @@ import torch.utils
 import torchvision.datasets as dset
 import torch.backends.cudnn as cudnn
 
-from torch.autograd import Variable
 from model import NetworkCIFAR as Network
 
 
@@ -30,6 +29,7 @@ parser.add_argument('--cutout_length', type=int, default=16, help='cutout length
 parser.add_argument('--drop_path_prob', type=float, default=0.2, help='drop path probability')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
 parser.add_argument('--arch', type=str, default='DARTS', help='which architecture to use')
+parser.add_argument('--disable_cudnn', action='store_true', default=False, help='disable cuDNN backend')
 args = parser.parse_args()
 
 log_format = '%(asctime)s %(message)s'
@@ -46,9 +46,9 @@ def main():
 
   np.random.seed(args.seed)
   torch.cuda.set_device(args.gpu)
-  cudnn.benchmark = True
+  cudnn.benchmark = not args.disable_cudnn
   torch.manual_seed(args.seed)
-  cudnn.enabled=True
+  cudnn.enabled = not args.disable_cudnn
   torch.cuda.manual_seed(args.seed)
   logging.info('gpu device = %d' % args.gpu)
   logging.info("args = %s", args)
@@ -80,25 +80,25 @@ def infer(test_queue, model, criterion):
   top5 = utils.AvgrageMeter()
   model.eval()
 
-  for step, (input, target) in enumerate(test_queue):
-    input = Variable(input, volatile=True).cuda()
-    target = Variable(target, volatile=True).cuda(async=True)
+  with torch.no_grad():
+    for step, (input, target) in enumerate(test_queue):
+      input = input.cuda()
+      target = target.cuda(non_blocking=True)
 
-    logits, _ = model(input)
-    loss = criterion(logits, target)
+      logits, _ = model(input)
+      loss = criterion(logits, target)
 
-    prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
-    n = input.size(0)
-    objs.update(loss.data[0], n)
-    top1.update(prec1.data[0], n)
-    top5.update(prec5.data[0], n)
+      prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
+      n = input.size(0)
+      objs.update(loss.item(), n)
+      top1.update(prec1.item(), n)
+      top5.update(prec5.item(), n)
 
-    if step % args.report_freq == 0:
-      logging.info('test %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
+      if step % args.report_freq == 0:
+        logging.info('test %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
 
   return top1.avg, objs.avg
 
 
 if __name__ == '__main__':
   main() 
-

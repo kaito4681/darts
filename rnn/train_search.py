@@ -121,7 +121,7 @@ test_data = batchify(corpus.test, test_batch_size, args)
 
 ntokens = len(corpus.dictionary)
 if args.continue_train:
-    model = torch.load(os.path.join(args.save, 'model.pt'))
+    model = torch.load(os.path.join(args.save, 'model.pt'), weights_only=False)
 else:
     model = model.RNNModelSearch(ntokens, args.emsize, args.nhid, args.nhidlast, 
                        args.dropout, args.dropouth, args.dropoutx, args.dropouti, args.dropoute)
@@ -153,17 +153,18 @@ def evaluate(data_source, batch_size=10):
     total_loss = 0
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
-    for i in range(0, data_source.size(0) - 1, args.bptt):
-        data, targets = get_batch(data_source, i, args, evaluation=True)
-        targets = targets.view(-1)
+    with torch.no_grad():
+        for i in range(0, data_source.size(0) - 1, args.bptt):
+            data, targets = get_batch(data_source, i, args, evaluation=True)
+            targets = targets.reshape(-1)
 
-        log_prob, hidden = parallel_model(data, hidden)
-        loss = nn.functional.nll_loss(log_prob.view(-1, log_prob.size(2)), targets).data
+            log_prob, hidden = parallel_model(data, hidden)
+            loss = nn.functional.nll_loss(log_prob.reshape(-1, log_prob.size(2)), targets)
 
-        total_loss += loss * len(data)
+            total_loss += loss.item() * len(data)
 
-        hidden = repackage_hidden(hidden)
-    return total_loss[0] / len(data_source)
+            hidden = repackage_hidden(hidden)
+    return total_loss / len(data_source)
 
 
 def train():
@@ -195,8 +196,8 @@ def train():
 
         start, end, s_id = 0, args.small_batch_size, 0
         while start < args.batch_size:
-            cur_data, cur_targets = data[:, start: end], targets[:, start: end].contiguous().view(-1)
-            cur_data_valid, cur_targets_valid = data_valid[:, start: end], targets_valid[:, start: end].contiguous().view(-1)
+            cur_data, cur_targets = data[:, start: end], targets[:, start: end].contiguous().reshape(-1)
+            cur_data_valid, cur_targets_valid = data_valid[:, start: end], targets_valid[:, start: end].contiguous().reshape(-1)
 
             # Starting each batch, we detach the hidden state from how it was previously produced.
             # If we didn't, the model would try backpropagating all the way to start of the dataset.
@@ -214,7 +215,7 @@ def train():
             hidden[s_id] = repackage_hidden(hidden[s_id])
 
             log_prob, hidden[s_id], rnn_hs, dropped_rnn_hs = parallel_model(cur_data, hidden[s_id], return_h=True)
-            raw_loss = nn.functional.nll_loss(log_prob.view(-1, log_prob.size(2)), cur_targets)
+            raw_loss = nn.functional.nll_loss(log_prob.reshape(-1, log_prob.size(2)), cur_targets)
 
             loss = raw_loss
             # Activiation Regularization
@@ -223,7 +224,7 @@ def train():
             # Temporal Activation Regularization (slowness)
             loss = loss + sum(args.beta * (rnn_h[1:] - rnn_h[:-1]).pow(2).mean() for rnn_h in rnn_hs[-1:])
             loss *= args.small_batch_size / args.batch_size
-            total_loss += raw_loss.data * args.small_batch_size / args.batch_size
+            total_loss += raw_loss.item() * args.small_batch_size / args.batch_size
             loss.backward()
 
             s_id += 1
@@ -233,15 +234,14 @@ def train():
             gc.collect()
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs.
-        torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
         optimizer.step()
 
-        # total_loss += raw_loss.data
         optimizer.param_groups[0]['lr'] = lr2
         if batch % args.log_interval == 0 and batch > 0:
             logging.info(parallel_model.genotype())
             print(F.softmax(parallel_model.weights, dim=-1))
-            cur_loss = total_loss[0] / args.log_interval
+            cur_loss = total_loss / args.log_interval
             elapsed = time.time() - start_time
             logging.info('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
                     'loss {:5.2f} | ppl {:8.2f}'.format(

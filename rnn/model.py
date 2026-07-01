@@ -6,7 +6,6 @@ from genotypes import STEPS
 from utils import mask2d
 from utils import LockedDropout
 from utils import embedded_dropout
-from torch.autograd import Variable
 
 INITRANGE = 0.04
 
@@ -155,6 +154,5 @@ class RNNModel(nn.Module):
         return model_output, hidden
 
     def init_hidden(self, bsz):
-      weight = next(self.parameters()).data
-      return [Variable(weight.new(1, bsz, self.nhid).zero_())]
-
+        weight = next(self.parameters()).data
+        return [weight.new_zeros(1, bsz, self.nhid)]

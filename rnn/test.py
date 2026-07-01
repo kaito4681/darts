@@ -91,26 +91,27 @@ def evaluate(data_source, batch_size=10):
     total_loss = 0
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
-    for i in range(0, data_source.size(0) - 1, args.bptt):
-        print(i, data_source.size(0)-1)
-        data, targets = get_batch(data_source, i, args, evaluation=True)
-        targets = targets.view(-1)
+    with torch.no_grad():
+        for i in range(0, data_source.size(0) - 1, args.bptt):
+            print(i, data_source.size(0)-1)
+            data, targets = get_batch(data_source, i, args, evaluation=True)
+            targets = targets.reshape(-1)
 
-        log_prob, hidden = parallel_model(data, hidden)
-        loss = nn.functional.nll_loss(log_prob.view(-1, log_prob.size(2)), targets).data
+            log_prob, hidden = parallel_model(data, hidden)
+            loss = nn.functional.nll_loss(log_prob.reshape(-1, log_prob.size(2)), targets)
 
-        total_loss += loss * len(data)
+            total_loss += loss.item() * len(data)
 
-        hidden = repackage_hidden(hidden)
-    return total_loss[0] / len(data_source)
+            hidden = repackage_hidden(hidden)
+    return total_loss / len(data_source)
 
 # Load the best saved model.
-model = torch.load(args.model_path)
+model = torch.load(args.model_path, weights_only=False)
 
 total_params = sum(x.data.nelement() for x in model.parameters())
 logging('Args: {}'.format(args))
 logging('Model total parameters: {}'.format(total_params))
-parallel_model = model.cuda()
+parallel_model = model.cuda() if args.cuda else model
 
 # Run on test data.
 test_loss = evaluate(test_data, test_batch_size)
@@ -118,4 +119,3 @@ logging('=' * 89)
 logging('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
     test_loss, math.exp(test_loss)))
 logging('=' * 89)
-
